@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 210 25% 96%;
+    --foreground: 210 30% 14%;
+    --card: 0 0% 100%;
+    --card-foreground: 210 30% 14%;
+    --primary: 224 82% 56%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 20% 94%;
+    --secondary-foreground: 210 30% 20%;
+    --muted: 210 20% 94%;
+    --muted-foreground: 210 12% 46%;
+    --accent: 210 20% 92%;
+    --accent-foreground: 210 30% 20%;
+    --destructive: 12 78% 45%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 60% 34%;
+    --success-foreground: 0 0% 100%;
+    --border: 214 20% 90%;
+    --input: 214 20% 88%;
+    --ring: 224 82% 56%;
+    --radius: 0.7rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    -webkit-font-smoothing: antialiased;
+  }
+  /* tabular figures for all money */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* React Flow: keep our fonts, tone down default look */
+.react-flow__attribution {
+  display: none;
+}
+.react-flow__edge-text {
+  font-family: 'Space Grotesk', sans-serif;
+}
