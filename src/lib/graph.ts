@@ -1,6 +1,6 @@
 import type { Edge, Node } from '@xyflow/react'
-import type { TripState } from '@/types'
-import { cityKey, modeMeta, routeHops, fmt } from './trip'
+import type { Departure, TripState } from '@/types'
+import { cityKey, modeMeta, picked, routeCities, routeHops, fmt, num } from './trip'
 
 export interface CityNodeData {
   label: string
@@ -16,6 +16,11 @@ export interface OffsetEdgeData {
   dim: boolean
   active: boolean
   routeName: string
+  // a ghost is an unpicked alternative departure on the active route; click to pick it
+  ghost?: boolean
+  routeId?: string
+  legRef?: string // leg id, or 'return'
+  departureId?: string
   [key: string]: unknown
 }
 
@@ -81,24 +86,33 @@ interface MergedEdge {
   routes: Set<string>
 }
 
+const depLabel = (d: Departure, currency: string) =>
+  `${d.time ? `${d.time} ` : ''}${modeMeta(d.mode).icon} ${fmt(num(d.fare), currency)}`
+
+interface PreEdge {
+  id: string
+  fromKey: string
+  toKey: string
+  pairKey: string
+  data: OffsetEdgeData
+}
+
 export function buildEdges(state: TripState): Edge<OffsetEdgeData>[] {
   const colorOf = new Map(state.routes.map((r) => [r.id, r.color]))
   const activeColor = colorOf.get(state.activeId)
+  const multiRoute = state.routes.length > 1
 
-  // Merge hops that are identical in from, to, mode AND fare. Two routes sharing
-  // the exact same leg collapse to a single edge — no redundant parallel line.
+  // --- picked edges: merge hops identical in from,to,mode,time,fare across routes ---
   const merged = new Map<string, MergedEdge>()
   for (const route of state.routes) {
     for (const hop of routeHops(state.home, route)) {
       const fromKey = cityKey(hop.from)
       const toKey = cityKey(hop.to)
       if (fromKey === '?' || toKey === '?' || fromKey === toKey) continue
-      // time is part of edge identity: same leg at a different time = different edge
       const key = `${fromKey}|${toKey}|${hop.mode}|${hop.time}|${hop.fare}`
       const existing = merged.get(key)
       if (existing) {
         existing.routes.add(route.id)
-        // if any route uses this hop outbound, draw it solid
         existing.isReturn = existing.isReturn && hop.isReturn
       } else {
         const time = hop.time ? `${hop.time} ` : ''
@@ -115,38 +129,22 @@ export function buildEdges(state: TripState): Edge<OffsetEdgeData>[] {
     }
   }
 
-  // Fan out only edges that genuinely differ on the same city pair.
-  const list = [...merged.values()]
-  const pairCount = new Map<string, number>()
-  for (const m of list) pairCount.set(m.pairKey, (pairCount.get(m.pairKey) ?? 0) + 1)
-
-  const slotSeen = new Map<string, number>()
-  const multiRoute = state.routes.length > 1
-
-  return list.map((m) => {
-    const total = pairCount.get(m.pairKey) ?? 1
-    const slot = slotSeen.get(m.pairKey) ?? 0
-    slotSeen.set(m.pairKey, slot + 1)
-    const offset = (slot - (total - 1) / 2) * GAP
-
+  const pre: PreEdge[] = [...merged.values()].map((m) => {
     const active = m.routes.has(state.activeId)
     const shared = m.routes.size > 1
-    // shared trunk: colored by the active route when active, else neutral slate.
-    // route-exclusive leg: its own route colour.
     const color = shared
       ? active && activeColor
         ? activeColor
         : SHARED_COLOR
       : colorOf.get([...m.routes][0]) ?? SHARED_COLOR
-
     return {
       id: m.key,
-      source: m.fromKey,
-      target: m.toKey,
-      type: 'offset',
+      fromKey: m.fromKey,
+      toKey: m.toKey,
+      pairKey: m.pairKey,
       data: {
         color,
-        offset,
+        offset: 0,
         label: m.label,
         isReturn: m.isReturn,
         active,
@@ -154,5 +152,65 @@ export function buildEdges(state: TripState): Edge<OffsetEdgeData>[] {
         routeName: shared ? 'shared' : '',
       },
     }
+  })
+
+  // --- ghost edges: unpicked alternative departures on the ACTIVE route only ---
+  const activeRoute = state.routes.find((r) => r.id === state.activeId)
+  if (activeRoute) {
+    const cities = routeCities(state.home, activeRoute)
+    const hops = activeRoute.legs.map((l, i) => ({
+      from: cities[i],
+      to: cities[i + 1],
+      departures: l.departures,
+      pick: l.pick,
+      ref: l.id,
+    }))
+    hops.push({
+      from: cities[cities.length - 1],
+      to: state.home,
+      departures: activeRoute.returnDepartures,
+      pick: activeRoute.returnPick,
+      ref: 'return',
+    })
+    for (const h of hops) {
+      const fromKey = cityKey(h.from)
+      const toKey = cityKey(h.to)
+      if (fromKey === '?' || toKey === '?' || fromKey === toKey) continue
+      for (const d of h.departures) {
+        if (d.id === h.pick) continue // the picked one is already a solid edge
+        pre.push({
+          id: `ghost-${activeRoute.id}-${h.ref}-${d.id}`,
+          fromKey,
+          toKey,
+          pairKey: [fromKey, toKey].sort().join('~'),
+          data: {
+            color: activeRoute.color,
+            offset: 0,
+            label: depLabel(d, state.currency),
+            isReturn: h.ref === 'return',
+            active: false,
+            dim: false,
+            routeName: '',
+            ghost: true,
+            routeId: activeRoute.id,
+            legRef: h.ref,
+            departureId: d.id,
+          },
+        })
+      }
+    }
+  }
+
+  // --- fan every edge (picked + ghost) sharing a city pair so they don't overlap ---
+  const pairCount = new Map<string, number>()
+  for (const e of pre) pairCount.set(e.pairKey, (pairCount.get(e.pairKey) ?? 0) + 1)
+  const slotSeen = new Map<string, number>()
+
+  return pre.map((e) => {
+    const total = pairCount.get(e.pairKey) ?? 1
+    const slot = slotSeen.get(e.pairKey) ?? 0
+    slotSeen.set(e.pairKey, slot + 1)
+    e.data.offset = (slot - (total - 1) / 2) * GAP
+    return { id: e.id, source: e.fromKey, target: e.toKey, type: 'offset', data: e.data }
   })
 }

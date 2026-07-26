@@ -1,5 +1,5 @@
-import type { ModeId, Route, TripState } from '@/types'
-import { MODES, ROUTE_COLORS, newLeg, newRoute, num } from '@/lib/trip'
+import type { Departure, ModeId, Route, TripState } from '@/types'
+import { MODES, ROUTE_COLORS, newDeparture, newLeg, newRoute, num, picked } from '@/lib/trip'
 
 const MODE_IDS = MODES.map((m) => m.id)
 const asMode = (v: unknown): ModeId =>
@@ -7,7 +7,14 @@ const asMode = (v: unknown): ModeId =>
 const asTime = (v: unknown): string =>
   typeof v === 'string' && /^\d{1,2}:\d{2}$/.test(v.trim()) ? v.trim() : ''
 
-/** Portable plan shape — no internal ids/colors. What the AI reads and writes. */
+interface DepExport {
+  mode: ModeId
+  time: string
+  fare: number
+}
+
+/** Portable plan shape — no internal ids/colors. What the AI reads and writes.
+ *  The chosen departure is at mode/time/fare; extra time options go in `alternatives`. */
 export interface PlanExport {
   home: string
   currency: string
@@ -16,12 +23,26 @@ export interface PlanExport {
   routes: {
     name: string
     notes: string
-    legs: { to: string; mode: ModeId; time: string; fare: number; stay: number; nights: number }[]
+    legs: {
+      to: string
+      stay: number
+      nights: number
+      mode: ModeId
+      time: string
+      fare: number
+      alternatives?: DepExport[]
+    }[]
     returnMode: ModeId
     returnTime: string
     returnFare: number
+    returnAlternatives?: DepExport[]
   }[]
 }
+
+const others = (departures: Departure[], pick: string): DepExport[] =>
+  departures
+    .filter((d) => d.id !== pick)
+    .map((d) => ({ mode: d.mode, time: d.time, fare: num(d.fare) }))
 
 export function planToJson(state: TripState): string {
   const plan: PlanExport = {
@@ -29,21 +50,31 @@ export function planToJson(state: TripState): string {
     currency: state.currency,
     travelers: state.travelers || 1,
     startDate: state.startDate || '',
-    routes: state.routes.map((r) => ({
-      name: r.name,
-      notes: r.notes || '',
-      legs: r.legs.map((l) => ({
-        to: l.to,
-        mode: l.mode,
-        time: l.time,
-        fare: num(l.fare),
-        stay: num(l.stay),
-        nights: num(l.nights),
-      })),
-      returnMode: r.returnMode,
-      returnTime: r.returnTime,
-      returnFare: num(r.returnFare),
-    })),
+    routes: state.routes.map((r) => {
+      const rd = picked(r.returnDepartures, r.returnPick)
+      const rAlts = others(r.returnDepartures, r.returnPick)
+      return {
+        name: r.name,
+        notes: r.notes || '',
+        legs: r.legs.map((l) => {
+          const pd = picked(l.departures, l.pick)
+          const alts = others(l.departures, l.pick)
+          return {
+            to: l.to,
+            stay: num(l.stay),
+            nights: num(l.nights),
+            mode: pd.mode,
+            time: pd.time,
+            fare: num(pd.fare),
+            ...(alts.length ? { alternatives: alts } : {}),
+          }
+        }),
+        returnMode: rd.mode,
+        returnTime: rd.time,
+        returnFare: num(rd.fare),
+        ...(rAlts.length ? { returnAlternatives: rAlts } : {}),
+      }
+    }),
   }
   return JSON.stringify(plan, null, 2)
 }
@@ -71,19 +102,25 @@ Return ONLY a JSON object (no prose, no markdown fences) matching EXACTLY this s
           "time": "departure time, 24-hour HH:MM (e.g. 08:15); use \\"\\" if unknown",
           "fare": 0,
           "stay": 0,
-          "nights": 0
+          "nights": 0,
+          "alternatives": [
+            { "mode": "plane|train|bus|car|ferry", "time": "HH:MM", "fare": 0 }
+          ]
         }
       ],
       "returnMode": "plane | train | bus | car | ferry",
       "returnTime": "HH:MM",
-      "returnFare": 0
+      "returnFare": 0,
+      "returnAlternatives": [
+        { "mode": "plane|train|bus|car|ferry", "time": "HH:MM", "fare": 0 }
+      ]
     }
   ]
 }
 
 Rules:
 - The trip always returns to "home" after the last leg — that final hop is returnMode/returnTime/returnFare.
-- "time" matters: the same leg at a different departure time can have a different fare, so vary them realistically.
+- "time" matters: the same hop at a different departure time can have a different fare. Put the option I'd probably take at mode/time/fare, and list OTHER times for the same hop in "alternatives" (or "returnAlternatives" for the trip home). Omit them if there's only one option.
 - "fare" is the transport cost of that hop; "stay" is total accommodation cost at that stop; "nights" is how many nights I sleep there.
 - Keep every route starting from "home" and returning to "home".
 
@@ -109,27 +146,45 @@ export function parsePlan(text: string): ParseResult {
   if (!Array.isArray(p.routes) || p.routes.length === 0)
     return { ok: false, error: 'JSON has no "routes" array.' }
 
+  // chosen (mode/time/fare) + optional alternatives[] → a departures[] with a pick
+  const toDepartures = (chosen: any, alts: any): { departures: Departure[]; pick: string } => {
+    const mk = (mode: any, time: any, fare: any): Departure => {
+      const d = newDeparture(asMode(mode))
+      d.time = asTime(time)
+      d.fare = num(fare)
+      return d
+    }
+    const first = mk(chosen?.mode, chosen?.time, chosen?.fare)
+    const rest = (Array.isArray(alts) ? alts : []).map((a: any) => mk(a?.mode, a?.time, a?.fare))
+    return { departures: [first, ...rest], pick: first.id }
+  }
+
   const routes: Route[] = p.routes.map((r, i) => {
     const base = newRoute(
       typeof r?.name === 'string' && r.name.trim() ? r.name : `Option ${i + 1}`,
       ROUTE_COLORS[i % ROUTE_COLORS.length],
     )
     const legsSrc = Array.isArray(r?.legs) ? r.legs : []
-    const legs = (legsSrc.length ? legsSrc : [{}]).map((l: any) => ({
-      ...newLeg(typeof l?.to === 'string' ? l.to : ''),
-      mode: asMode(l?.mode),
-      time: asTime(l?.time),
-      fare: num(l?.fare),
-      stay: num(l?.stay),
-      nights: Math.max(0, Math.round(num(l?.nights))),
-    }))
+    const legs = (legsSrc.length ? legsSrc : [{}]).map((l: any) => {
+      const { departures, pick } = toDepartures(l, l?.alternatives)
+      return {
+        ...newLeg(typeof l?.to === 'string' ? l.to : ''),
+        stay: num(l?.stay),
+        nights: Math.max(0, Math.round(num(l?.nights))),
+        departures,
+        pick,
+      }
+    })
+    const ret = toDepartures(
+      { mode: (r as any)?.returnMode, time: (r as any)?.returnTime, fare: (r as any)?.returnFare },
+      (r as any)?.returnAlternatives,
+    )
     return {
       ...base,
       notes: typeof r?.notes === 'string' ? r.notes : '',
       legs,
-      returnMode: asMode(r?.returnMode),
-      returnTime: asTime(r?.returnTime),
-      returnFare: num(r?.returnFare),
+      returnDepartures: ret.departures,
+      returnPick: ret.pick,
     }
   })
 

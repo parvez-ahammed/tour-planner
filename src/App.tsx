@@ -1,41 +1,76 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Route, TripState } from '@/types'
-import { ROUTE_COLORS, cheapestRouteId, newLeg, newRoute, uid } from '@/lib/trip'
+import {
+  ROUTE_COLORS,
+  cheapestRouteId,
+  fmt,
+  newDeparture,
+  newLeg,
+  newRoute,
+  routeTotals,
+  uid,
+} from '@/lib/trip'
+import type { Departure } from '@/types'
 import RoutePanel from '@/components/RoutePanel'
 import Summary from '@/components/Summary'
 import TripGraph from '@/components/TripGraph'
 import { Button } from '@/components/ui/button'
-import { RotateCcw, X, ClipboardPaste, PanelLeftOpen } from 'lucide-react'
+import { RotateCcw, X, ClipboardPaste, PanelLeftOpen, BarChart3 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { buildAiPrompt, planToJson, parsePlan, planFromHash, shareUrl } from '@/lib/io'
 
 const STORAGE_KEY = 'tour-planner.v3'
 
 function seed(): TripState {
+  // one departure per leg
+  const leg = (to: string, mode: any, time: string, fare: number, stay: number, nights: number) => {
+    const l = newLeg(to)
+    const d = l.departures[0]
+    d.mode = mode
+    d.time = time
+    d.fare = fare
+    l.stay = stay
+    l.nights = nights
+    return l
+  }
+  const dep = (mode: any, time: string, fare: number): Departure => {
+    const d = newDeparture(mode)
+    d.time = time
+    d.fare = fare
+    return d
+  }
+
   const a: Route = {
     ...newRoute('Return via Prague', ROUTE_COLORS[0]),
-    notes: 'Book Krakow flight early — cheaper midweek.',
+    notes: 'Evening Prague→Oslo flight is cheaper — tap it on the map to pick it.',
     legs: [
-      { ...newLeg('Krakow'), mode: 'plane', time: '08:15', fare: 90, stay: 120, nights: 3 },
-      { ...newLeg('Slovakia'), mode: 'bus', time: '12:00', fare: 25, stay: 80, nights: 2 },
-      { ...newLeg('Prague'), mode: 'train', time: '09:30', fare: 30, stay: 140, nights: 3 },
+      leg('Krakow', 'plane', '08:15', 90, 120, 3),
+      leg('Slovakia', 'bus', '12:00', 25, 80, 2),
+      leg('Prague', 'train', '09:30', 30, 140, 3),
     ],
-    returnMode: 'plane',
-    returnTime: '18:45',
-    returnFare: 110,
+    // two ways home from Prague: pricey morning vs cheap evening — evening picked
+    returnDepartures: (() => {
+      const morning = dep('plane', '08:00', 150)
+      const evening = dep('plane', '20:45', 90)
+      return [evening, morning]
+    })(),
+    returnPick: '', // set below
   }
+  a.returnPick = a.returnDepartures[0].id // evening
+
   const b: Route = {
     ...newRoute('Return via Vienna', ROUTE_COLORS[1]),
     legs: [
-      { ...newLeg('Krakow'), mode: 'plane', time: '08:15', fare: 90, stay: 120, nights: 3 },
-      { ...newLeg('Slovakia'), mode: 'bus', time: '12:00', fare: 25, stay: 80, nights: 2 },
-      { ...newLeg('Prague'), mode: 'train', time: '09:30', fare: 30, stay: 140, nights: 3 },
-      { ...newLeg('Vienna'), mode: 'train', time: '14:00', fare: 20, stay: 130, nights: 2 },
+      leg('Krakow', 'plane', '08:15', 90, 120, 3),
+      leg('Slovakia', 'bus', '12:00', 25, 80, 2),
+      leg('Prague', 'train', '09:30', 30, 140, 3),
+      leg('Vienna', 'train', '14:00', 20, 130, 2),
     ],
-    returnMode: 'plane',
-    returnTime: '20:10',
-    returnFare: 95,
+    returnDepartures: [dep('plane', '20:10', 95)],
+    returnPick: '',
   }
+  b.returnPick = b.returnDepartures[0].id
+
   return {
     home: 'Oslo',
     currency: '€',
@@ -46,32 +81,63 @@ function seed(): TripState {
   }
 }
 
-// Backfill fields added in later versions so older saved plans don't break.
+// Backfill fields added in later versions so older saved plans don't break —
+// including converting the old single mode/time/fare per leg into a departures[].
 function normalize(s: any): TripState {
+  const depsFrom = (src: any, fallbackMode: string): { departures: Departure[]; pick: string } => {
+    if (Array.isArray(src?.departures) && src.departures.length) {
+      const departures = src.departures.map((d: any) => ({
+        id: d.id ?? uid('dep'),
+        mode: d.mode ?? fallbackMode,
+        time: d.time ?? '',
+        fare: d.fare ?? 0,
+      }))
+      const pick = departures.some((d: Departure) => d.id === src.pick) ? src.pick : departures[0].id
+      return { departures, pick }
+    }
+    const d: Departure = {
+      id: uid('dep'),
+      mode: src?.mode ?? fallbackMode,
+      time: src?.time ?? '',
+      fare: src?.fare ?? 0,
+    }
+    return { departures: [d], pick: d.id }
+  }
+
   return {
     home: s.home ?? 'Home',
     currency: s.currency ?? '€',
     travelers: s.travelers ?? 1,
     startDate: s.startDate ?? '',
     activeId: s.activeId ?? s.routes?.[0]?.id ?? '',
-    routes: (s.routes ?? []).map((r: any) => ({
-      id: r.id,
-      name: r.name ?? 'Option',
-      color: r.color ?? ROUTE_COLORS[0],
-      notes: r.notes ?? '',
-      returnMode: r.returnMode ?? 'plane',
-      returnTime: r.returnTime ?? '',
-      returnFare: r.returnFare ?? 0,
-      legs: (r.legs ?? []).map((l: any) => ({
-        id: l.id,
-        to: l.to ?? '',
-        mode: l.mode ?? 'train',
-        time: l.time ?? '',
-        fare: l.fare ?? 0,
-        stay: l.stay ?? 0,
-        nights: l.nights ?? 0,
-      })),
-    })),
+    routes: (s.routes ?? []).map((r: any) => {
+      const ret =
+        Array.isArray(r.returnDepartures) && r.returnDepartures.length
+          ? depsFrom({ departures: r.returnDepartures, pick: r.returnPick }, 'plane')
+          : depsFrom(
+              { mode: r.returnMode, time: r.returnTime, fare: r.returnFare },
+              'plane',
+            )
+      return {
+        id: r.id,
+        name: r.name ?? 'Option',
+        color: r.color ?? ROUTE_COLORS[0],
+        notes: r.notes ?? '',
+        returnDepartures: ret.departures,
+        returnPick: ret.pick,
+        legs: (r.legs ?? []).map((l: any) => {
+          const { departures, pick } = depsFrom(l, 'train')
+          return {
+            id: l.id ?? uid('leg'),
+            to: l.to ?? '',
+            stay: l.stay ?? 0,
+            nights: l.nights ?? 0,
+            departures,
+            pick,
+          }
+        }),
+      }
+    }),
   }
 }
 
@@ -99,6 +165,7 @@ export default function App() {
   const [importError, setImportError] = useState<string | null>(null)
   const [sidebarW, setSidebarW] = useState(520)
   const [collapsed, setCollapsed] = useState(false)
+  const [compareOpen, setCompareOpen] = useState(false)
   const dragging = useRef(false)
 
   useEffect(() => {
@@ -131,6 +198,14 @@ export default function App() {
     () => cheapestRouteId(state.routes, travelers),
     [state.routes, travelers],
   )
+  // headline numbers for the Compare button
+  const { cheapestTotal, savings } = useMemo(() => {
+    const totals = state.routes.map((r) => routeTotals(r, travelers).total).sort((a, b) => a - b)
+    return {
+      cheapestTotal: totals[0] ?? 0,
+      savings: totals.length > 1 ? totals[totals.length - 1] - totals[0] : 0,
+    }
+  }, [state.routes, travelers])
 
   const patch = (p: Partial<TripState>) => setState((s) => ({ ...s, ...p }))
   const patchRoute = (id: string, p: Partial<Route>) =>
@@ -192,6 +267,16 @@ export default function App() {
 
   const shareLink = () => copy(shareUrl(state), 'share')
 
+  const selectDeparture = (routeId: string, legRef: string, depId: string) =>
+    setState((s) => ({
+      ...s,
+      routes: s.routes.map((r) => {
+        if (r.id !== routeId) return r
+        if (legRef === 'return') return { ...r, returnPick: depId }
+        return { ...r, legs: r.legs.map((l) => (l.id === legRef ? { ...l, pick: depId } : l)) }
+      }),
+    }))
+
   const doImport = () => {
     const r = parsePlan(importText)
     if (r.ok) {
@@ -207,7 +292,7 @@ export default function App() {
   return (
     <>
     <div
-      className="relative grid h-screen grid-cols-[var(--sb)_minmax(0,1fr)_360px] max-[1080px]:h-auto max-[1080px]:grid-cols-1"
+      className="relative grid h-screen grid-cols-[var(--sb)_minmax(0,1fr)] max-[1080px]:h-auto max-[1080px]:grid-cols-1"
       style={{ ['--sb' as string]: collapsed ? '0px' : `${sidebarW}px` }}
     >
       {/* keep column 1 occupied when collapsed so the graph/summary don't shift left */}
@@ -289,31 +374,62 @@ export default function App() {
               </button>
             )
           })}
-          <Button variant="ghost" size="sm" className="ml-auto text-muted-foreground" onClick={reset}>
+          <Button size="sm" className="ml-auto" onClick={() => setCompareOpen(true)}>
+            <BarChart3 className="h-3.5 w-3.5" /> Compare costs
+            <span className="tnum ml-1 rounded bg-primary-foreground/20 px-1.5 py-0.5 text-[11px] font-semibold">
+              {savings > 0 ? `save ${fmt(savings, state.currency)}` : fmt(cheapestTotal, state.currency)}
+            </span>
+          </Button>
+          <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={reset}>
             <RotateCcw className="h-3.5 w-3.5" /> sample
           </Button>
         </div>
 
         <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-          <TripGraph state={state} />
+          <TripGraph state={state} onSelectDeparture={selectDeparture} />
         </div>
         <p className="text-center text-[11px] text-muted-foreground">
           One map, all routes. Selected route is bold; others dimmed. Solid = outbound, dashed =
           return. Drag any city to rearrange · scroll to zoom.
         </p>
       </main>
-
-      <Summary
-        home={state.home}
-        currency={state.currency}
-        travelers={travelers}
-        startDate={state.startDate}
-        routes={state.routes}
-        activeId={state.activeId}
-        cheapestId={cheapestId}
-        onActivate={(id) => patch({ activeId: id })}
-      />
     </div>
+
+    {compareOpen && (
+      <div
+        className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-foreground/40 p-4 sm:p-8"
+        onClick={() => setCompareOpen(false)}
+      >
+        <div
+          className="my-auto w-full max-w-xl overflow-hidden rounded-xl border border-border bg-card shadow-xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between border-b border-border px-5 py-3">
+            <h3 className="font-display text-base font-semibold">Cost comparison</h3>
+            <button
+              className="rounded p-1 text-muted-foreground hover:bg-muted"
+              onClick={() => setCompareOpen(false)}
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="max-h-[80vh] overflow-y-auto p-5">
+            <Summary
+              home={state.home}
+              currency={state.currency}
+              travelers={travelers}
+              startDate={state.startDate}
+              routes={state.routes}
+              activeId={state.activeId}
+              cheapestId={cheapestId}
+              onActivate={(id) => patch({ activeId: id })}
+              bare
+            />
+          </div>
+        </div>
+      </div>
+    )}
 
     {importOpen && (
       <div

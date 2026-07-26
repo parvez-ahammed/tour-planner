@@ -1,13 +1,21 @@
 export type ModeId = 'plane' | 'train' | 'bus' | 'car' | 'ferry'
 
+// One way to travel a hop: a mode at a time for a fare. A leg can hold several
+// (e.g. morning vs evening flight, same Prague→Oslo) and you pick one.
+export interface Departure {
+  id: string
+  mode: ModeId
+  time: string // 24h "HH:MM", '' if unset
+  fare: number
+}
+
 export interface Leg {
   id: string
   to: string
-  mode: ModeId
-  time: string // 24h departure "HH:MM", '' if unset
-  fare: number
   stay: number
   nights: number
+  departures: Departure[]
+  pick: string // id of the chosen departure
 }
 
 export interface Route {
@@ -15,9 +23,8 @@ export interface Route {
   name: string
   color: string
   legs: Leg[]
-  returnMode: ModeId
-  returnTime: string
-  returnFare: number
+  returnDepartures: Departure[]
+  returnPick: string
   notes: string
 }
 

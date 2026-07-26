@@ -76,7 +76,7 @@ function OffsetEdge({
   const cx = (sourceX + targetX) / 2 + nx * d.offset
   const cy = (sourceY + targetY) / 2 + ny * d.offset
   const path = `M ${sourceX},${sourceY} Q ${cx},${cy} ${targetX},${targetY}`
-  const opacity = d.dim ? 0.2 : 1
+  const opacity = d.ghost ? 0.5 : d.dim ? 0.2 : 1
 
   // Direction arrowhead placed along the curve (t≈0.62), pointing toward target.
   // Mid-edge so it stays clear of both nodes and reads even when edges are dimmed.
@@ -89,13 +89,23 @@ function OffsetEdge({
 
   return (
     <>
+      {/* fat invisible hit area so ghost alternatives are easy to click */}
+      {d.ghost && (
+        <path
+          d={path}
+          fill="none"
+          stroke="transparent"
+          strokeWidth={18}
+          style={{ cursor: 'pointer' }}
+        />
+      )}
       <path
         d={path}
         fill="none"
         stroke={d.color}
-        strokeWidth={d.active ? 3 : 2}
-        strokeDasharray={d.isReturn ? '7 5' : undefined}
-        style={{ opacity }}
+        strokeWidth={d.active ? 3 : d.ghost ? 1.5 : 2}
+        strokeDasharray={d.ghost ? '3 4' : d.isReturn ? '7 5' : undefined}
+        style={{ opacity, cursor: d.ghost ? 'pointer' : undefined }}
       />
       <path
         d="M -6,-5 L 6,0 L -6,5 Z"
@@ -105,16 +115,20 @@ function OffsetEdge({
       />
       <foreignObject
         x={cx - 62}
-        y={cy - 14}
+        y={cy - 16}
         width={124}
-        height={28}
+        height={32}
         style={{ opacity, overflow: 'visible', pointerEvents: 'none' }}
       >
         <div
-          className="tnum mx-auto w-fit rounded-md border bg-card px-1.5 py-0.5 text-[11px] font-semibold shadow-sm"
+          className={
+            'tnum mx-auto w-fit rounded-md border px-1.5 py-0.5 text-[11px] font-semibold shadow-sm ' +
+            (d.ghost ? 'border-dashed bg-card/90' : 'bg-card')
+          }
           style={{ borderColor: d.color }}
         >
           {d.label}
+          {d.ghost && <span className="ml-1 opacity-60">tap to pick</span>}
         </div>
       </foreignObject>
     </>
@@ -124,7 +138,12 @@ function OffsetEdge({
 const nodeTypes = { city: CityNode }
 const edgeTypes = { offset: OffsetEdge }
 
-function Flow({ state }: { state: TripState }) {
+interface GraphProps {
+  state: TripState
+  onSelectDeparture: (routeId: string, legRef: string, departureId: string) => void
+}
+
+function Flow({ state, onSelectDeparture }: GraphProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<CityNodeData>>([])
   const posRef = useRef<PosMap>({})
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -180,6 +199,11 @@ function Flow({ state }: { state: TripState }) {
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
+        onEdgeClick={(_e, edge) => {
+          const gd = edge.data as OffsetEdgeData | undefined
+          if (gd?.ghost && gd.routeId && gd.legRef && gd.departureId)
+            onSelectDeparture(gd.routeId, gd.legRef, gd.departureId)
+        }}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         nodesConnectable={false}
@@ -198,10 +222,10 @@ function Flow({ state }: { state: TripState }) {
   )
 }
 
-export default function TripGraph({ state }: { state: TripState }) {
+export default function TripGraph({ state, onSelectDeparture }: GraphProps) {
   return (
     <ReactFlowProvider>
-      <Flow state={state} />
+      <Flow state={state} onSelectDeparture={onSelectDeparture} />
     </ReactFlowProvider>
   )
 }

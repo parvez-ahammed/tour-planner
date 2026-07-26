@@ -1,4 +1,4 @@
-import type { Leg, ModeId, Route, Totals } from '@/types'
+import type { Departure, Leg, ModeId, Route, Totals } from '@/types'
 
 export const MODES: { id: ModeId; label: string; icon: string }[] = [
   { id: 'plane', label: 'Plane', icon: '✈' },
@@ -15,26 +15,40 @@ export const ROUTE_COLORS = ['#3b6ff5', '#7c3aed', '#0d9488', '#c2410c', '#be185
 let counter = 0
 export const uid = (p = 'id') => `${p}_${(counter++).toString(36)}_${Math.floor(performance.now())}`
 
-export const newLeg = (to = ''): Leg => ({
-  id: uid('leg'),
-  to,
-  mode: 'train',
+export const newDeparture = (mode: ModeId = 'train'): Departure => ({
+  id: uid('dep'),
+  mode,
   time: '',
   fare: 0,
-  stay: 0,
-  nights: 0,
 })
 
-export const newRoute = (name: string, color: string): Route => ({
-  id: uid('route'),
-  name,
-  color,
-  legs: [newLeg()],
-  returnMode: 'plane',
-  returnTime: '',
-  returnFare: 0,
-  notes: '',
-})
+export const newLeg = (to = ''): Leg => {
+  const d = newDeparture('train')
+  return { id: uid('leg'), to, stay: 0, nights: 0, departures: [d], pick: d.id }
+}
+
+export const newRoute = (name: string, color: string): Route => {
+  const rd = newDeparture('plane')
+  return {
+    id: uid('route'),
+    name,
+    color,
+    legs: [newLeg()],
+    returnDepartures: [rd],
+    returnPick: rd.id,
+    notes: '',
+  }
+}
+
+/** The chosen departure (falls back to the first, or a train stub if somehow empty). */
+export const picked = (departures: Departure[], pick: string): Departure =>
+  departures.find((d) => d.id === pick) ?? departures[0] ?? newDeparture()
+
+/** Id of the lowest-fare departure — used to badge "cheapest". */
+export const cheapestDepId = (departures: Departure[]): string =>
+  departures.length
+    ? departures.reduce((a, b) => (num(b.fare) < num(a.fare) ? b : a)).id
+    : ''
 
 export const num = (v: unknown): number => {
   const n = typeof v === 'number' ? v : parseFloat(String(v))
@@ -60,21 +74,23 @@ export const routeHops = (home: string, route: Route): Hop[] => {
   const cities = routeCities(home, route)
   const hops: Hop[] = []
   for (let i = 0; i < route.legs.length; i++) {
+    const d = picked(route.legs[i].departures, route.legs[i].pick)
     hops.push({
       from: cities[i],
       to: cities[i + 1],
-      mode: route.legs[i].mode,
-      time: route.legs[i].time,
-      fare: num(route.legs[i].fare),
+      mode: d.mode,
+      time: d.time,
+      fare: num(d.fare),
       isReturn: false,
     })
   }
+  const rd = picked(route.returnDepartures, route.returnPick)
   hops.push({
     from: cities[cities.length - 1],
     to: home,
-    mode: route.returnMode,
-    time: route.returnTime,
-    fare: num(route.returnFare),
+    mode: rd.mode,
+    time: rd.time,
+    fare: num(rd.fare),
     isReturn: true,
   })
   return hops
@@ -82,8 +98,12 @@ export const routeHops = (home: string, route: Route): Hop[] => {
 
 export const routeTotals = (route: Route, travelers = 1): Totals => {
   const t = Math.max(1, travelers || 1)
-  const transport =
-    (route.legs.reduce((s, l) => s + num(l.fare), 0) + num(route.returnFare)) * t
+  const legFares = route.legs.reduce(
+    (s, l) => s + num(picked(l.departures, l.pick).fare),
+    0,
+  )
+  const returnFare = num(picked(route.returnDepartures, route.returnPick).fare)
+  const transport = (legFares + returnFare) * t
   const stay = route.legs.reduce((s, l) => s + num(l.stay), 0)
   return { transport, stay, total: transport + stay }
 }

@@ -1,5 +1,5 @@
 import type { Route } from '@/types'
-import { fmt, fmtDate, num, routeCities, routeSchedule, routeTotals } from '@/lib/trip'
+import { fmt, fmtDate, num, picked, routeCities, routeSchedule, routeTotals } from '@/lib/trip'
 import { cn } from '@/lib/utils'
 
 interface Props {
@@ -11,6 +11,7 @@ interface Props {
   activeId: string
   cheapestId: string | null
   onActivate: (id: string) => void
+  bare?: boolean // rendered inside the compare modal (no sidebar chrome)
 }
 
 export default function Summary({
@@ -22,6 +23,7 @@ export default function Summary({
   activeId,
   cheapestId,
   onActivate,
+  bare = false,
 }: Props) {
   const rows = routes
     .map((r) => ({ route: r, totals: routeTotals(r, travelers) }))
@@ -32,10 +34,19 @@ export default function Summary({
   const spread = cheapest && dearest ? dearest.totals.total - cheapest.totals.total : 0
 
   return (
-    <aside className="flex h-full flex-col gap-4 overflow-y-auto overflow-x-hidden border-l border-border bg-card px-4 py-5">
-      <h2 className="font-display text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-        Cost comparison
-      </h2>
+    <aside
+      className={cn(
+        'flex flex-col gap-4',
+        bare
+          ? ''
+          : 'h-full overflow-y-auto overflow-x-hidden border-l border-border bg-card px-4 py-5',
+      )}
+    >
+      {!bare && (
+        <h2 className="font-display text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Cost comparison
+        </h2>
+      )}
       {travelers > 1 && (
         <p className="-mt-2 text-[11px] text-muted-foreground">
           Transport fares × <strong className="text-foreground">{travelers}</strong> travelers ·
@@ -131,34 +142,45 @@ export default function Summary({
               </p>
               <table className="w-full border-collapse text-xs">
                 <tbody>
-                  {route.legs.map((leg, i) => (
-                    <tr key={leg.id} className="border-b border-border/50">
-                      <td className="py-1.5 text-muted-foreground">
-                        {i === 0 ? home : route.legs[i - 1].to.trim() || '?'} →{' '}
-                        {leg.to.trim() || '?'}
-                        <span className="tnum ml-1 text-[10px] opacity-70">
-                          {leg.time && `· ${leg.time}`}
-                          {sched.arrivals[i] && ` · ${fmtDate(sched.arrivals[i])}`}
-                          {num(leg.nights) > 0 && ` · ${num(leg.nights)}n`}
-                        </span>
-                      </td>
-                      <td className="tnum py-1.5 text-right">{fmt(leg.fare, currency)}</td>
-                      <td className="tnum py-1.5 text-right text-muted-foreground">
-                        {num(leg.stay) > 0 ? `🛏 ${fmt(leg.stay, currency)}` : '—'}
-                      </td>
-                    </tr>
-                  ))}
-                  <tr className="border-b border-border/50">
-                    <td className="py-1.5 italic text-muted-foreground">
-                      {route.legs[route.legs.length - 1]?.to.trim() || '?'} → {home}
-                      <span className="tnum ml-1 text-[10px] opacity-70">
-                        {route.returnTime && `· ${route.returnTime}`}
-                        {sched.returnDate && ` · ${fmtDate(sched.returnDate)}`}
-                      </span>
-                    </td>
-                    <td className="tnum py-1.5 text-right">{fmt(route.returnFare, currency)}</td>
-                    <td className="py-1.5 text-right text-muted-foreground">—</td>
-                  </tr>
+                  {route.legs.map((leg, i) => {
+                    const pd = picked(leg.departures, leg.pick)
+                    return (
+                      <tr key={leg.id} className="border-b border-border/50">
+                        <td className="py-1.5 text-muted-foreground">
+                          {i === 0 ? home : route.legs[i - 1].to.trim() || '?'} →{' '}
+                          {leg.to.trim() || '?'}
+                          <span className="tnum ml-1 text-[10px] opacity-70">
+                            {pd.time && `· ${pd.time}`}
+                            {sched.arrivals[i] && ` · ${fmtDate(sched.arrivals[i])}`}
+                            {num(leg.nights) > 0 && ` · ${num(leg.nights)}n`}
+                            {leg.departures.length > 1 && ` · +${leg.departures.length - 1} times`}
+                          </span>
+                        </td>
+                        <td className="tnum py-1.5 text-right">{fmt(pd.fare, currency)}</td>
+                        <td className="tnum py-1.5 text-right text-muted-foreground">
+                          {num(leg.stay) > 0 ? `🛏 ${fmt(leg.stay, currency)}` : '—'}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                  {(() => {
+                    const rd = picked(route.returnDepartures, route.returnPick)
+                    return (
+                      <tr className="border-b border-border/50">
+                        <td className="py-1.5 italic text-muted-foreground">
+                          {route.legs[route.legs.length - 1]?.to.trim() || '?'} → {home}
+                          <span className="tnum ml-1 text-[10px] opacity-70">
+                            {rd.time && `· ${rd.time}`}
+                            {sched.returnDate && ` · ${fmtDate(sched.returnDate)}`}
+                            {route.returnDepartures.length > 1 &&
+                              ` · +${route.returnDepartures.length - 1} times`}
+                          </span>
+                        </td>
+                        <td className="tnum py-1.5 text-right">{fmt(rd.fare, currency)}</td>
+                        <td className="py-1.5 text-right text-muted-foreground">—</td>
+                      </tr>
+                    )
+                  })()}
                   <tr>
                     <td className="pt-2 font-display font-bold">Total</td>
                     <td className="tnum pt-2 text-right font-display font-bold" colSpan={2}>
