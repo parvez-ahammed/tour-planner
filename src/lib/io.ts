@@ -98,11 +98,11 @@ Return ONLY a JSON object (no prose, no markdown fences) matching EXACTLY this s
       "legs": [
         {
           "to": "string — city you travel to",
+          "stay": 0,
+          "nights": 0,
           "mode": "one of: plane | train | bus | car | ferry",
           "time": "departure time, 24-hour HH:MM (e.g. 08:15); use \\"\\" if unknown",
           "fare": 0,
-          "stay": 0,
-          "nights": 0,
           "alternatives": [
             { "mode": "plane|train|bus|car|ferry", "time": "HH:MM", "fare": 0 }
           ]

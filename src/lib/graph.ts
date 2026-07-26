@@ -1,6 +1,6 @@
 import type { Edge, Node } from '@xyflow/react'
-import type { Departure, TripState } from '@/types'
-import { cityKey, modeMeta, picked, routeCities, routeHops, fmt, num } from './trip'
+import type { TripState } from '@/types'
+import { cityKey, modeMeta, routeHops, fmt } from './trip'
 
 export interface CityNodeData {
   label: string
@@ -86,9 +86,6 @@ interface MergedEdge {
   routes: Set<string>
 }
 
-const depLabel = (d: Departure, currency: string) =>
-  `${d.time ? `${d.time} ` : ''}${modeMeta(d.mode).icon} ${fmt(num(d.fare), currency)}`
-
 interface PreEdge {
   id: string
   fromKey: string
@@ -154,54 +151,10 @@ export function buildEdges(state: TripState): Edge<OffsetEdgeData>[] {
     }
   })
 
-  // --- ghost edges: unpicked alternative departures on the ACTIVE route only ---
-  const activeRoute = state.routes.find((r) => r.id === state.activeId)
-  if (activeRoute) {
-    const cities = routeCities(state.home, activeRoute)
-    const hops = activeRoute.legs.map((l, i) => ({
-      from: cities[i],
-      to: cities[i + 1],
-      departures: l.departures,
-      pick: l.pick,
-      ref: l.id,
-    }))
-    hops.push({
-      from: cities[cities.length - 1],
-      to: state.home,
-      departures: activeRoute.returnDepartures,
-      pick: activeRoute.returnPick,
-      ref: 'return',
-    })
-    for (const h of hops) {
-      const fromKey = cityKey(h.from)
-      const toKey = cityKey(h.to)
-      if (fromKey === '?' || toKey === '?' || fromKey === toKey) continue
-      for (const d of h.departures) {
-        if (d.id === h.pick) continue // the picked one is already a solid edge
-        pre.push({
-          id: `ghost-${activeRoute.id}-${h.ref}-${d.id}`,
-          fromKey,
-          toKey,
-          pairKey: [fromKey, toKey].sort().join('~'),
-          data: {
-            color: activeRoute.color,
-            offset: 0,
-            label: depLabel(d, state.currency),
-            isReturn: h.ref === 'return',
-            active: false,
-            dim: false,
-            routeName: '',
-            ghost: true,
-            routeId: activeRoute.id,
-            legRef: h.ref,
-            departureId: d.id,
-          },
-        })
-      }
-    }
-  }
+  // Only the PICKED departure per hop is drawn — unselected time options stay in
+  // the sidebar so the map shows exactly what the total is computed from.
 
-  // --- fan every edge (picked + ghost) sharing a city pair so they don't overlap ---
+  // --- fan every edge sharing a city pair so they don't overlap ---
   const pairCount = new Map<string, number>()
   for (const e of pre) pairCount.set(e.pairKey, (pairCount.get(e.pairKey) ?? 0) + 1)
   const slotSeen = new Map<string, number>()

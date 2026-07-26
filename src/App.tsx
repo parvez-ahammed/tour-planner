@@ -42,7 +42,7 @@ function seed(): TripState {
 
   const a: Route = {
     ...newRoute('Return via Prague', ROUTE_COLORS[0]),
-    notes: 'Evening Prague→Oslo flight is cheaper — tap it on the map to pick it.',
+    notes: 'Evening Prague→Oslo flight is cheaper — pick it under the return leg.',
     legs: [
       leg('Krakow', 'plane', '08:15', 90, 120, 3),
       leg('Slovakia', 'bus', '12:00', 25, 80, 2),
