@@ -292,7 +292,7 @@ export default function App() {
   return (
     <>
     <div
-      className="relative grid h-screen grid-cols-[var(--sb)_minmax(0,1fr)] max-[1080px]:h-auto max-[1080px]:grid-cols-1"
+      className="relative grid h-screen grid-rows-[minmax(0,1fr)] grid-cols-[var(--sb)_minmax(0,1fr)] overflow-hidden max-[1080px]:h-auto max-[1080px]:grid-rows-none max-[1080px]:overflow-visible max-[1080px]:grid-cols-1"
       style={{ ['--sb' as string]: collapsed ? '0px' : `${sidebarW}px` }}
     >
       {/* keep column 1 occupied when collapsed so the graph/summary don't shift left */}

@@ -81,11 +81,19 @@ function OffsetEdge({
   // Direction arrowhead placed along the curve (t≈0.62), pointing toward target.
   // Mid-edge so it stays clear of both nodes and reads even when edges are dimmed.
   const t = 0.62
-  const ax = (1 - t) * (1 - t) * sourceX + 2 * (1 - t) * t * cx + t * t * targetX
-  const ay = (1 - t) * (1 - t) * sourceY + 2 * (1 - t) * t * cy + t * t * targetY
+  const ax = Math.round((1 - t) * (1 - t) * sourceX + 2 * (1 - t) * t * cx + t * t * targetX)
+  const ay = Math.round((1 - t) * (1 - t) * sourceY + 2 * (1 - t) * t * cy + t * t * targetY)
   const tanx = 2 * (1 - t) * (cx - sourceX) + 2 * t * (targetX - cx)
   const tany = 2 * (1 - t) * (cy - sourceY) + 2 * t * (targetY - cy)
   const ang = (Math.atan2(tany, tanx) * 180) / Math.PI
+
+  // Push the label clearly to ONE side of its curve so the stroke never runs
+  // through the text (fixes the blur where a label sat on top of the line), and
+  // so two fanned edges over the same pair split their labels to opposite sides
+  // instead of stacking. Round to whole pixels to keep the text crisp.
+  const lsign = d.offset >= 0 ? 1 : -1
+  const lx = Math.round((sourceX + targetX) / 2 + nx * (d.offset + lsign * 16))
+  const ly = Math.round((sourceY + targetY) / 2 + ny * (d.offset + lsign * 16))
 
   return (
     <>
@@ -114,8 +122,8 @@ function OffsetEdge({
         style={{ opacity }}
       />
       <foreignObject
-        x={cx - 62}
-        y={cy - 16}
+        x={lx - 62}
+        y={ly - 16}
         width={124}
         height={32}
         style={{ opacity, overflow: 'visible', pointerEvents: 'none' }}
@@ -123,7 +131,7 @@ function OffsetEdge({
         <div
           className={
             'tnum mx-auto w-fit rounded-md border px-1.5 py-0.5 text-[11px] font-semibold shadow-sm ' +
-            (d.ghost ? 'border-dashed bg-card/90' : 'bg-card')
+            (d.ghost ? 'border-dashed bg-card/95' : 'bg-card')
           }
           style={{ borderColor: d.color }}
         >

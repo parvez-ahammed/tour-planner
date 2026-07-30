@@ -152,33 +152,59 @@ export default function RoutePanel(p: Props) {
               returns back here to visualize &amp; tweak.
             </p>
             <div className="flex flex-wrap gap-1.5">
-              <Button size="sm" onClick={p.onCopyPrompt} className="flex-1">
+              <Button
+                size="sm"
+                onClick={p.onCopyPrompt}
+                className="flex-1"
+                title={
+                  'Copies a ready-made prompt — the schema plus your current draft. Give it to any AI ' +
+                  '(ChatGPT / Claude / Gemini) and it fills in realistic fares, times & costs and returns ' +
+                  'your travel plan formatted to this exact schema. Then use “Paste plan” to load it back. ' +
+                  'Prefer to do it yourself? Skip the AI and just paste your own plan JSON.'
+                }
+              >
                 {p.copied === 'prompt' ? <Check className="h-3.5 w-3.5" /> : <Sparkles className="h-3.5 w-3.5" />}
                 {p.copied === 'prompt' ? 'Copied!' : 'Copy AI prompt'}
               </Button>
-              <Button variant="outline" size="sm" onClick={p.onOpenImport} className="flex-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={p.onOpenImport}
+                className="flex-1"
+                title="Paste plan JSON (what the AI returned, or your own) to load and visualize it here."
+              >
                 <ClipboardPaste className="h-3.5 w-3.5" /> Paste plan
               </Button>
+            </div>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
               <Button
-                variant="ghost"
+                variant="outline"
                 size="sm"
                 onClick={p.onCopyJson}
-                title="Copy current plan as JSON"
+                className="flex-1"
+                title="Copy your current plan as JSON — hand it to an AI to tweak, keep as a backup, or share as text."
               >
                 {p.copied === 'json' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                {p.copied === 'json' ? 'Copied!' : 'Copy current plan'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={p.onShareLink}
+                className="flex-1"
+                title="Copy a link with the whole plan encoded in the URL — send it to a travel buddy."
+              >
+                {p.copied === 'share' ? (
+                  <>
+                    <Check className="h-3.5 w-3.5" /> Link copied
+                  </>
+                ) : (
+                  <>
+                    <Link2 className="h-3.5 w-3.5" /> Copy share link
+                  </>
+                )}
               </Button>
             </div>
-            <Button variant="outline" size="sm" onClick={p.onShareLink} className="mt-1.5 w-full">
-              {p.copied === 'share' ? (
-                <>
-                  <Check className="h-3.5 w-3.5" /> Link copied — paste to share
-                </>
-              ) : (
-                <>
-                  <Link2 className="h-3.5 w-3.5" /> Copy share link
-                </>
-              )}
-            </Button>
           </div>
         )}
       </div>

@@ -7,6 +7,12 @@ yourself instead of letting an algorithm pick.
 
 Everything runs in the browser. No backend, no account — your plan auto-saves to `localStorage`.
 
+![Tour Planner — one map of every route, cost comparison in the sidebar](docs/screenshot-desktop.png)
+
+<p align="center">
+  <img src="docs/screenshot-mobile.png" width="320" alt="Tour Planner on mobile — the panel stacks above the map" />
+</p>
+
 ## What it does
 
 - **One unified map** of every route (React Flow) — shared legs collapse to a single edge; routes
@@ -38,3 +44,9 @@ npm run dev      # http://localhost:5173
 npm run build    # production build to dist/
 npm run preview  # serve the build
 ```
+
+## Deploy
+
+Hosted on **Vercel**, connected to this repo — every push to `main` builds and deploys
+automatically. Vercel auto-detects the Vite setup (`npm run build` → static `dist/`), so there's
+no extra config to maintain. No environment variables or backend: the whole app is static.

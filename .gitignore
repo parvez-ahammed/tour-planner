@@ -18,6 +18,8 @@ pnpm-debug.log*
 # QA / screenshots produced during development
 .playwright-mcp/
 *.png
+# ...but keep the README screenshots
+!docs/*.png
 
 # junk
 bash.exe.stackdump
