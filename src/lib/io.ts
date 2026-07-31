@@ -1,5 +1,5 @@
 import type { Departure, ModeId, Route, TripState } from '@/types'
-import { MODES, ROUTE_COLORS, newDeparture, newLeg, newRoute, num, picked } from '@/lib/trip'
+import { MODES, ROUTE_COLORS, fareOf, newDeparture, newLeg, newRoute, num, picked } from '@/lib/trip'
 
 const MODE_IDS = MODES.map((m) => m.id)
 const asMode = (v: unknown): ModeId =>
@@ -42,7 +42,7 @@ export interface PlanExport {
 const others = (departures: Departure[], pick: string): DepExport[] =>
   departures
     .filter((d) => d.id !== pick)
-    .map((d) => ({ mode: d.mode, time: d.time, fare: num(d.fare) }))
+    .map((d) => ({ mode: d.mode, time: d.time, fare: fareOf(d) }))
 
 /** The portable plan object (no ids/colors). Used both for the human-readable
  *  JSON and for the compact, minified form that goes in a share link. */
@@ -67,13 +67,13 @@ export function planToPlan(state: TripState): PlanExport {
             nights: num(l.nights),
             mode: pd.mode,
             time: pd.time,
-            fare: num(pd.fare),
+            fare: fareOf(pd),
             ...(alts.length ? { alternatives: alts } : {}),
           }
         }),
         returnMode: rd.mode,
         returnTime: rd.time,
-        returnFare: num(rd.fare),
+        returnFare: fareOf(rd),
         ...(rAlts.length ? { returnAlternatives: rAlts } : {}),
       }
     }),

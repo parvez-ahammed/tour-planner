@@ -544,20 +544,30 @@ function DepartureList({
           <ModeSelect
             className="w-12 shrink-0"
             value={d.mode}
-            onChange={(mode) => onSet(d.id, { mode })}
+            // walking has no fare — zero it so a stale price can't linger in the total
+            onChange={(mode) => onSet(d.id, mode === 'walk' ? { mode, fare: 0 } : { mode })}
           />
           <TimeInput
             className="w-[58px] shrink-0"
             value={d.time}
             onChange={(time) => onSet(d.id, { time })}
           />
-          <InlineMoney
-            className="w-[64px] shrink-0"
-            title="Fare"
-            value={d.fare}
-            currency={currency}
-            onChange={(v) => onSet(d.id, { fare: v })}
-          />
+          {d.mode === 'walk' ? (
+            <span
+              className="flex h-8 w-[64px] shrink-0 items-center justify-center rounded-md border border-dashed border-input text-[11px] italic text-muted-foreground"
+              title="Walking is free — no fare"
+            >
+              free
+            </span>
+          ) : (
+            <InlineMoney
+              className="w-[64px] shrink-0"
+              title="Fare"
+              value={d.fare}
+              currency={currency}
+              onChange={(v) => onSet(d.id, { fare: v })}
+            />
+          )}
           {many && d.id === cheap && (
             <span className="rounded-full bg-success/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-success">
               cheapest

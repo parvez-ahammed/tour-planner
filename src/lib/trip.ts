@@ -45,10 +45,14 @@ export const newRoute = (name: string, color: string): Route => {
 export const picked = (departures: Departure[], pick: string): Departure =>
   departures.find((d) => d.id === pick) ?? departures[0] ?? newDeparture()
 
+/** Effective fare of a departure — walking is always free, whatever value a
+ *  stored/imported plan happens to carry, so this is the single source of truth. */
+export const fareOf = (d: Departure): number => (d.mode === 'walk' ? 0 : num(d.fare))
+
 /** Id of the lowest-fare departure — used to badge "cheapest". */
 export const cheapestDepId = (departures: Departure[]): string =>
   departures.length
-    ? departures.reduce((a, b) => (num(b.fare) < num(a.fare) ? b : a)).id
+    ? departures.reduce((a, b) => (fareOf(b) < fareOf(a) ? b : a)).id
     : ''
 
 export const num = (v: unknown): number => {
@@ -81,7 +85,7 @@ export const routeHops = (home: string, route: Route): Hop[] => {
       to: cities[i + 1],
       mode: d.mode,
       time: d.time,
-      fare: num(d.fare),
+      fare: fareOf(d),
       isReturn: false,
     })
   }
@@ -91,7 +95,7 @@ export const routeHops = (home: string, route: Route): Hop[] => {
     to: home,
     mode: rd.mode,
     time: rd.time,
-    fare: num(rd.fare),
+    fare: fareOf(rd),
     isReturn: true,
   })
   return hops
@@ -100,10 +104,10 @@ export const routeHops = (home: string, route: Route): Hop[] => {
 export const routeTotals = (route: Route, travelers = 1): Totals => {
   const t = Math.max(1, travelers || 1)
   const legFares = route.legs.reduce(
-    (s, l) => s + num(picked(l.departures, l.pick).fare),
+    (s, l) => s + fareOf(picked(l.departures, l.pick)),
     0,
   )
-  const returnFare = num(picked(route.returnDepartures, route.returnPick).fare)
+  const returnFare = fareOf(picked(route.returnDepartures, route.returnPick))
   const transport = (legFares + returnFare) * t
   const stay = route.legs.reduce((s, l) => s + num(l.stay), 0)
   return { transport, stay, total: transport + stay }

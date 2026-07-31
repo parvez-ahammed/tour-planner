@@ -116,12 +116,14 @@ export function buildEdges(state: TripState): Edge<OffsetEdgeData>[] {
         existing.isReturn = existing.isReturn && hop.isReturn
       } else {
         const time = hop.time ? `${hop.time} ` : ''
+        // walking is free — show just the icon (and time), no price
+        const price = hop.mode === 'walk' ? '' : ` ${fmt(hop.fare, state.currency)}`
         merged.set(key, {
           key,
           fromKey,
           toKey,
           pairKey: [fromKey, toKey].sort().join('~'),
-          label: `${time}${modeMeta(hop.mode).icon} ${fmt(hop.fare, state.currency)}`,
+          label: `${time}${modeMeta(hop.mode).icon}${price}`,
           isReturn: hop.isReturn,
           routes: new Set([route.id]),
         })
