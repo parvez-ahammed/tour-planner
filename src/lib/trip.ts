@@ -6,6 +6,7 @@ export const MODES: { id: ModeId; label: string; icon: string }[] = [
   { id: 'bus', label: 'Bus', icon: '🚌' },
   { id: 'car', label: 'Car', icon: '🚗' },
   { id: 'ferry', label: 'Ferry', icon: '⛴' },
+  { id: 'walk', label: 'Walk', icon: '🚶' },
 ]
 
 export const modeMeta = (id: ModeId) => MODES.find((m) => m.id === id) ?? MODES[0]

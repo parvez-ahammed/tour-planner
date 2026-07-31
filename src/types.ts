@@ -1,4 +1,4 @@
-export type ModeId = 'plane' | 'train' | 'bus' | 'car' | 'ferry'
+export type ModeId = 'plane' | 'train' | 'bus' | 'car' | 'ferry' | 'walk'
 
 // One way to travel a hop: a mode at a time for a fare. A leg can hold several
 // (e.g. morning vs evening flight, same Prague→Oslo) and you pick one.

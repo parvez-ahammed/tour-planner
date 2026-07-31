@@ -106,19 +106,19 @@ Return ONLY a JSON object (no prose, no markdown fences) matching EXACTLY this s
           "to": "string — city you travel to",
           "stay": 0,
           "nights": 0,
-          "mode": "one of: plane | train | bus | car | ferry",
+          "mode": "one of: plane | train | bus | car | ferry | walk",
           "time": "departure time, 24-hour HH:MM (e.g. 08:15); use \\"\\" if unknown",
           "fare": 0,
           "alternatives": [
-            { "mode": "plane|train|bus|car|ferry", "time": "HH:MM", "fare": 0 }
+            { "mode": "plane|train|bus|car|ferry|walk", "time": "HH:MM", "fare": 0 }
           ]
         }
       ],
-      "returnMode": "plane | train | bus | car | ferry",
+      "returnMode": "plane | train | bus | car | ferry | walk",
       "returnTime": "HH:MM",
       "returnFare": 0,
       "returnAlternatives": [
-        { "mode": "plane|train|bus|car|ferry", "time": "HH:MM", "fare": 0 }
+        { "mode": "plane|train|bus|car|ferry|walk", "time": "HH:MM", "fare": 0 }
       ]
     }
   ]
