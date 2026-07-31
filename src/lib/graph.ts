@@ -11,6 +11,9 @@ export interface CityNodeData {
 export interface OffsetEdgeData {
   color: string
   offset: number
+  // centered slot ordinal among edges sharing this city pair (…-1, 0, +1…);
+  // the label uses it to fan its pill apart from its twins, orientation-aware.
+  labelOrd: number
   label: string
   isReturn: boolean
   dim: boolean
@@ -142,6 +145,7 @@ export function buildEdges(state: TripState): Edge<OffsetEdgeData>[] {
       data: {
         color,
         offset: 0,
+        labelOrd: 0,
         label: m.label,
         isReturn: m.isReturn,
         active,
@@ -163,7 +167,9 @@ export function buildEdges(state: TripState): Edge<OffsetEdgeData>[] {
     const total = pairCount.get(e.pairKey) ?? 1
     const slot = slotSeen.get(e.pairKey) ?? 0
     slotSeen.set(e.pairKey, slot + 1)
-    e.data.offset = (slot - (total - 1) / 2) * GAP
+    const center = slot - (total - 1) / 2
+    e.data.offset = center * GAP
+    e.data.labelOrd = center
     return { id: e.id, source: e.fromKey, target: e.toKey, type: 'offset', data: e.data }
   })
 }

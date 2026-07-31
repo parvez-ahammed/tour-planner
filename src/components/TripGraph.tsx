@@ -71,8 +71,16 @@ function OffsetEdge({
   const dx = targetX - sourceX
   const dy = targetY - sourceY
   const len = Math.hypot(dx, dy) || 1
-  const nx = -dy / len
-  const ny = dx / len
+  let nx = -dy / len
+  let ny = dx / len
+  // Canonical perpendicular — independent of which way this hop points. Without
+  // this, an out-and-back pair (A→B and B→A) flips the normal AND the fan ordinal,
+  // the two cancel, and both curves + labels collapse onto the same side. Forcing
+  // a direction-independent normal makes the pair fan to OPPOSITE sides.
+  if (nx < 0 || (nx === 0 && ny < 0)) {
+    nx = -nx
+    ny = -ny
+  }
   const cx = (sourceX + targetX) / 2 + nx * d.offset
   const cy = (sourceY + targetY) / 2 + ny * d.offset
   const path = `M ${sourceX},${sourceY} Q ${cx},${cy} ${targetX},${targetY}`
@@ -87,13 +95,19 @@ function OffsetEdge({
   const tany = 2 * (1 - t) * (cy - sourceY) + 2 * t * (targetY - cy)
   const ang = (Math.atan2(tany, tanx) * 180) / Math.PI
 
-  // Push the label clearly to ONE side of its curve so the stroke never runs
-  // through the text (fixes the blur where a label sat on top of the line), and
-  // so two fanned edges over the same pair split their labels to opposite sides
-  // instead of stacking. Round to whole pixels to keep the text crisp.
-  const lsign = d.offset >= 0 ? 1 : -1
-  const lx = Math.round((sourceX + targetX) / 2 + nx * (d.offset + lsign * 16))
-  const ly = Math.round((sourceY + targetY) / 2 + ny * (d.offset + lsign * 16))
+  // Fan each label off its curve so the stroke never runs through the text, and
+  // so edges sharing a city pair (e.g. an out-and-back A→B→A) don't stack their
+  // pills. The separation is orientation-aware: a near-vertical edge needs a full
+  // pill-WIDTH of horizontal gap between twins, a flat edge only a pill-HEIGHT —
+  // a fixed sideways nudge failed on steep edges where the wide pill overlapped.
+  const PILL_W = 94
+  const PILL_H = 30
+  const step = Math.abs(nx) * PILL_W + Math.abs(ny) * PILL_H
+  const ord = d.labelOrd ?? 0
+  // ord 0 (a lone edge, or the middle of an odd fan) still gets nudged off the line
+  const lmag = ord === 0 ? 18 : ord * step
+  const lx = Math.round((sourceX + targetX) / 2 + nx * lmag)
+  const ly = Math.round((sourceY + targetY) / 2 + ny * lmag)
 
   return (
     <>
