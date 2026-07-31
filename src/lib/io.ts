@@ -44,8 +44,10 @@ const others = (departures: Departure[], pick: string): DepExport[] =>
     .filter((d) => d.id !== pick)
     .map((d) => ({ mode: d.mode, time: d.time, fare: num(d.fare) }))
 
-export function planToJson(state: TripState): string {
-  const plan: PlanExport = {
+/** The portable plan object (no ids/colors). Used both for the human-readable
+ *  JSON and for the compact, minified form that goes in a share link. */
+export function planToPlan(state: TripState): PlanExport {
+  return {
     home: state.home,
     currency: state.currency,
     travelers: state.travelers || 1,
@@ -76,7 +78,11 @@ export function planToJson(state: TripState): string {
       }
     }),
   }
-  return JSON.stringify(plan, null, 2)
+}
+
+/** Pretty JSON for humans — the "Copy current plan" / AI-prompt draft. */
+export function planToJson(state: TripState): string {
+  return JSON.stringify(planToPlan(state), null, 2)
 }
 
 export function buildAiPrompt(state: TripState): string {
@@ -205,10 +211,14 @@ export function parsePlan(text: string): ParseResult {
   return { ok: true, state }
 }
 
-/** Base64 (unicode-safe) of the plan JSON, for a shareable #p=... link. */
+/** Base64url (unicode-safe) of the MINIFIED plan JSON, for a shareable #p=... link.
+ *  Two things keep it short: no pretty-print whitespace, and url-safe base64 so the
+ *  param needs no percent-encoding (every +, / or = would otherwise become 3 chars). */
 export function encodePlanParam(state: TripState): string {
-  const json = planToJson(state)
-  return 'p=' + encodeURIComponent(btoa(unescape(encodeURIComponent(json))))
+  const json = JSON.stringify(planToPlan(state)) // compact — no indentation
+  const b64 = btoa(unescape(encodeURIComponent(json)))
+  const urlSafe = b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  return 'p=' + urlSafe
 }
 
 export function shareUrl(state: TripState): string {
@@ -216,12 +226,19 @@ export function shareUrl(state: TripState): string {
   return `${base}#${encodePlanParam(state)}`
 }
 
-/** Parse a plan out of a location.hash like "#p=..." — returns null if absent/invalid. */
+/** Parse a plan out of a location.hash like "#p=..." — returns null if absent/invalid.
+ *  Accepts both the new base64url form AND legacy links (percent-encoded standard
+ *  base64 of the pretty JSON), so old shared URLs keep working. */
 export function planFromHash(hash: string): TripState | null {
   try {
     const m = /[#&]?p=([^&]+)/.exec(hash || '')
     if (!m) return null
-    const json = decodeURIComponent(escape(atob(decodeURIComponent(m[1]))))
+    // legacy links were percent-encoded — harmless no-op on the new url-safe form
+    let s = decodeURIComponent(m[1])
+    // url-safe → standard base64, then restore any stripped padding
+    s = s.replace(/-/g, '+').replace(/_/g, '/')
+    while (s.length % 4) s += '='
+    const json = decodeURIComponent(escape(atob(s)))
     const r = parsePlan(json)
     return r.ok ? r.state : null
   } catch {
